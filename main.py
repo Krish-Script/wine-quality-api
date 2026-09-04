@@ -1,3 +1,5 @@
+# Wine Quality ML API - v2
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
