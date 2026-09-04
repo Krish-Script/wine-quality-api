@@ -5,7 +5,9 @@ The model classifies wines as **High Quality** or **Low Quality** and returns a 
 with every prediction. Built with FastAPI, deployed on Render, and backed by PostgreSQL for
 real-time prediction logging.
 
-**Live API:** https://wine-quality-api-9jan.onrender.com/docs
+**Live API:** https://wine-quality-api-9jan.onrender.com/docs  
+**Live Dashboard:** https://6a9aa374bdf0e0f93fb64e8a--fanciful-bublanina-b3f50f.netlify.app  
+**Dashboard Repository:** https://github.com/Krish-Script/wine-dashboard
 
 ---
 
