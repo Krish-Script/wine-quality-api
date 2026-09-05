@@ -72,6 +72,14 @@ class PredictionLog(Base):
 
 Base.metadata.create_all(bind=engine)
 
+class DriftLog(Base):
+    __tablename__ = "drift_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    prediction_id = Column(Integer)
+    drifted_features = Column(String)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
 # Load model
 app = FastAPI()
 model = XGBClassifier()
@@ -88,6 +96,28 @@ class WineInput(BaseModel):
     density: float
     sulphates: float
     alcohol: float
+
+TRAINING_STATS = {
+    "fixed_acidity":        {"mean": 8.319637,  "std": 1.741096},
+    "volatile_acidity":     {"mean": 0.527821,  "std": 0.179060},
+    "citric_acid":          {"mean": 0.270976,  "std": 0.194801},
+    "chlorides":            {"mean": 0.087467,  "std": 0.047065},
+    "total_sulfur_dioxide": {"mean": 46.467792, "std": 32.895324},
+    "density":              {"mean": 0.996747,  "std": 0.001887},
+    "sulphates":            {"mean": 0.658149,  "std": 0.169507},
+    "alcohol":              {"mean": 10.422983, "std": 1.065668}
+}
+
+def check_drift(wine_input: dict) -> list:
+    drifted = []
+    for feature, value in wine_input.items():
+        stats = TRAINING_STATS.get(feature)
+        if stats:
+            lower = stats["mean"] - 3 * stats["std"]
+            upper = stats["mean"] + 3 * stats["std"]
+            if value < lower or value > upper:
+                drifted.append(feature)
+    return drifted
 
 @app.get("/")
 def root():
@@ -113,8 +143,14 @@ def predict(wine: WineInput):
     result = "High Quality" if prediction == 1 else "Low Quality"
     confidence = round(float(max(probability)) * 100, 2)
 
-    # Log to database
+    # Check for drift
+    wine_dict = wine.model_dump()
+    drifted_features = check_drift(wine_dict)
+    drift_detected = len(drifted_features) > 0
+
     db = SessionLocal()
+
+    # Log prediction
     log = PredictionLog(
         fixed_acidity=wine.fixed_acidity,
         volatile_acidity=wine.volatile_acidity,
@@ -129,11 +165,24 @@ def predict(wine: WineInput):
     )
     db.add(log)
     db.commit()
+    db.refresh(log)
+
+    # Log drift if detected
+    if drift_detected:
+        drift_log = DriftLog(
+            prediction_id=log.id,
+            drifted_features=", ".join(drifted_features)
+        )
+        db.add(drift_log)
+        db.commit()
+
     db.close()
 
     return {
         "prediction": result,
-        "confidence": confidence
+        "confidence": confidence,
+        "drift_detected": drift_detected,
+        "drifted_features": drifted_features
     }
 
 @app.get("/predictions/history")
@@ -151,6 +200,24 @@ def history():
             "confidence": log.confidence,
             "alcohol": log.alcohol,
             "volatile_acidity": log.volatile_acidity,
+            "timestamp": log.timestamp
+        }
+        for log in logs
+    ]
+
+@app.get("/drift/history")
+def drift_history():
+    db = SessionLocal()
+    logs = db.query(DriftLog).order_by(
+        DriftLog.timestamp.desc()
+    ).limit(20).all()
+    db.close()
+
+    return [
+        {
+            "id": log.id,
+            "prediction_id": log.prediction_id,
+            "drifted_features": log.drifted_features,
             "timestamp": log.timestamp
         }
         for log in logs
