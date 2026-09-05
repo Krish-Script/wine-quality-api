@@ -8,6 +8,7 @@ from xgboost import XGBClassifier
 from sqlalchemy import create_engine, Column, Integer, Float, String, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 from datetime import datetime
 import joblib
 import numpy as np
@@ -70,7 +71,21 @@ class PredictionLog(Base):
     confidence = Column(Float)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
+from sqlalchemy import text
+
 Base.metadata.create_all(bind=engine)
+
+# Ensure drift_logs table exists
+with engine.connect() as conn:
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS drift_logs (
+            id SERIAL PRIMARY KEY,
+            prediction_id INTEGER,
+            drifted_features VARCHAR,
+            timestamp TIMESTAMP DEFAULT NOW()
+        )
+    """))
+    conn.commit()
 
 class DriftLog(Base):
     __tablename__ = "drift_logs"
